@@ -1,5 +1,8 @@
 CC = gcc
 
+DEBUG_MACROS = DEBUG_TRACE_EXEC
+DEBUG_ARGS = $(patsubst %,-D%,$(DEBUG_MACROS))
+
 SRC_DIR = src
 BUILD_DIR = build
 OBJ_DIR = $(BUILD_DIR)/objs
@@ -9,14 +12,14 @@ TARGET = $(BUILD_DIR)/clox
 
 # src/main.c, src/chunk.c, ... -> build/objs/main.o, build/objs/chunk.o ...
 SRCS = $(wildcard $(SRC_DIR)/*.c)
-OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
+OBJS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
 
 .PHONY: all clean release debug
 
 BUILD_TYPE ?= debug
 
 ifeq ($(BUILD_TYPE),debug)
-	CFLAGS = -Wall -Wextra -I$(INCLUDE_DIR) -g -DDEBUG
+	CFLAGS = -Wall -Wextra -I$(INCLUDE_DIR) -g $(DEBUG_ARGS)
 	BUILD_LABEL = Debug
 else ifeq ($(BUILD_TYPE),release)
 	CFLAGS = -Wall -Wextra -I$(INCLUDE_DIR) -O
