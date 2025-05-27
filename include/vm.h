@@ -25,6 +25,6 @@ void freeVM(VM *vm);
 void pushStack(VM *vm, Value value);
 Value popStack(VM *vm);
 
-InterpretResult interpret(VM *vm, Chunk *chunk);
+InterpretResult interpret(const char *source);
 
 #endif

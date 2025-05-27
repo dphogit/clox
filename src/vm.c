@@ -1,5 +1,6 @@
 #include "vm.h"
 #include "chunk.h"
+#include "compiler.h"
 #include "debug.h"
 
 #include <stdbool.h>
@@ -72,8 +73,7 @@ static InterpretResult run(VM *vm) {
 #undef BINARY_OP
 }
 
-InterpretResult interpret(VM *vm, Chunk *chunk) {
-  vm->chunk = chunk;
-  vm->ip = chunk->code;
-  return run(vm);
+InterpretResult interpret(const char *source) {
+  compile(source);
+  return INTERPRET_OK;
 }
