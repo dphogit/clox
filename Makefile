@@ -1,6 +1,7 @@
 CC = gcc
 
-DEBUG_MACROS = DEBUG_TRACE_EXEC
+# TODO: Define a .h file to conditionally include depending on debug rule
+DEBUG_MACROS = DEBUG_TRACE_EXEC DEBUG_PRINT_CODE
 DEBUG_ARGS = $(patsubst %,-D%,$(DEBUG_MACROS))
 
 SRC_DIR = src

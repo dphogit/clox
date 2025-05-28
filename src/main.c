@@ -1,5 +1,3 @@
-#include "chunk.h"
-#include "debug.h"
 #include "vm.h"
 
 #include <stdbool.h>
@@ -85,9 +83,6 @@ void runFile(const char *path) {
 void usage() { printf("Usage: clox [path]\n"); }
 
 int main(int argc, const char *argv[]) {
-  VM vm;
-  initVM(&vm);
-
   if (argc == 1) {
     repl();
   } else if (argc == 2) {
@@ -96,8 +91,6 @@ int main(int argc, const char *argv[]) {
     usage();
     exit(2);
   }
-
-  freeVM(&vm);
 
   return EXIT_SUCCESS;
 }

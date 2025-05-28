@@ -2,3 +2,4 @@
 -Wall
 -Wextra
 -DDEBUG_TRACE_EXEC
+-DDEBUG_PRINT_CODE

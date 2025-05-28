@@ -32,12 +32,16 @@ static InterpretResult run(VM *vm) {
     pushStack(vm, a op b);                     \
   } while (false);
 
+#ifdef DEBUG_TRACE_EXEC
+  printf("== Trace Execution ==\n");
+#endif
+
   while (true) {
 #ifdef DEBUG_TRACE_EXEC
     // Print the stack, with the right as the top of the stack.
     printf("          ");
     if (vm->stackTop - vm->stack == 0) {
-      printf("<Empty>");
+      printf("[empty]");
     } else {
       for (Value *element = vm->stack; element < vm->stackTop; element++) {
         printf("[ ");
@@ -74,6 +78,21 @@ static InterpretResult run(VM *vm) {
 }
 
 InterpretResult interpret(const char *source) {
-  compile(source);
-  return INTERPRET_OK;
+  Chunk chunk;
+  initChunk(&chunk);
+
+  if (!compile(source, &chunk)) {
+    freeChunk(&chunk);
+    return INTERPRET_COMPILE_ERR;
+  }
+
+  VM vm;
+  initVM(&vm);
+  vm.chunk = &chunk;
+  vm.ip    = chunk.code;
+
+  InterpretResult result = run(&vm);
+
+  freeChunk(&chunk);
+  return result;
 }
