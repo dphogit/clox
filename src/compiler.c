@@ -34,13 +34,15 @@ typedef enum precedence {
 
 typedef void (*ParseFn)(Parser *parser);
 
-// A parse rule encapsulates three properties for a token type:
-// 1. The fn to compile a prefix expression starting with the token type
-// 2. The fn to compile an infix expression whose left operand is followed
-//    by the token type
-// 3. Precedence of an infix expression that uses that token as an operator.
-// The precedence of a prefix expression starting with a token is not required
-// because all prefix operators in this language have the same precedence.
+/*
+ * A parse rule encapsulates three properties for a token type:
+ * 1. The fn to compile a prefix expression starting with the token type
+ * 2. The fn to compile an infix expression whose left operand is followed
+ * by the token type
+ * 3. Precedence of an infix expression that uses that token as an operator.
+ * The precedence of a prefix expression starting with a token is not required
+ * because all prefix operators in this language have the same precedence.
+ */
 typedef struct parse_rule {
   ParseFn prefix;
   ParseFn infix;
@@ -141,7 +143,7 @@ static ParseRule *getRule(TokenType type);
 
 static void number(Parser *parser) {
   double value = strtod(parser->previous.start, NULL);
-  emitConstant(parser, value);
+  emitConstant(parser, NUM_VAL(value));
 }
 
 static void grouping(Parser *parser) {
@@ -157,7 +159,8 @@ static void unary(Parser *parser) {
 
   // Emit operator instruction
   switch (opType) {
-    case TOK_MINUS: emitByte(parser, OP_NEGATE);
+    case TOK_MINUS: emitByte(parser, OP_NEGATE); break;
+    case TOK_BANG:  emitByte(parser, OP_NOT); break;
     default:        return;
   }
 }
@@ -173,56 +176,71 @@ static void binary(Parser *parser) {
   parsePrecedence(parser, rule->precedence + 1);
 
   switch (opType) {
-    case TOK_PLUS:  emitByte(parser, OP_ADD); break;
-    case TOK_MINUS: emitByte(parser, OP_SUBTRACT); break;
-    case TOK_STAR:  emitByte(parser, OP_MULTIPLY); break;
-    case TOK_SLASH: emitByte(parser, OP_DIVIDE); break;
+    case TOK_PLUS:       emitByte(parser, OP_ADD); break;
+    case TOK_MINUS:      emitByte(parser, OP_SUBTRACT); break;
+    case TOK_STAR:       emitByte(parser, OP_MULTIPLY); break;
+    case TOK_SLASH:      emitByte(parser, OP_DIVIDE); break;
+    case TOK_BANG_EQ:    emitByte(parser, OP_NOT_EQ); break;
+    case TOK_GREATER:    emitByte(parser, OP_GREATER); break;
+    case TOK_GREATER_EQ: emitByte(parser, OP_GREATER_EQ); break;
+    case TOK_LESS:       emitByte(parser, OP_LESS); break;
+    case TOK_LESS_EQ:    emitByte(parser, OP_LESS_EQ); break;
+    case TOK_EQ:         emitByte(parser, OP_EQ); break;
+    default:             return;
+  }
+}
+
+static void literal(Parser *parser) {
+  switch (parser->previous.type) {
+    case TOK_FALSE: emitByte(parser, OP_FALSE); break;
+    case TOK_TRUE:  emitByte(parser, OP_TRUE); break;
+    case TOK_NIL:   emitByte(parser, OP_NIL); break;
     default:        return;
   }
 }
 
 // The table of parse rules that drives the parser.
 ParseRule rules[] = {
-    [TOK_LEFT_PAREN]  = {grouping, NULL,   PREC_NONE  },
-    [TOK_RIGHT_PAREN] = {NULL,     NULL,   PREC_NONE  },
-    [TOK_LEFT_BRACE]  = {NULL,     NULL,   PREC_NONE  },
-    [TOK_RIGHT_BRACE] = {NULL,     NULL,   PREC_NONE  },
-    [TOK_COMMA]       = {NULL,     NULL,   PREC_NONE  },
-    [TOK_DOT]         = {NULL,     NULL,   PREC_NONE  },
-    [TOK_MINUS]       = {unary,    binary, PREC_TERM  },
-    [TOK_PLUS]        = {NULL,     binary, PREC_TERM  },
-    [TOK_SEMICOLON]   = {NULL,     NULL,   PREC_NONE  },
-    [TOK_SLASH]       = {NULL,     binary, PREC_FACTOR},
-    [TOK_STAR]        = {NULL,     binary, PREC_FACTOR},
-    [TOK_BANG]        = {NULL,     NULL,   PREC_NONE  },
-    [TOK_BANG_EQ]     = {NULL,     NULL,   PREC_NONE  },
-    [TOK_EQ]          = {NULL,     NULL,   PREC_NONE  },
-    [TOK_EQ_EQ]       = {NULL,     NULL,   PREC_NONE  },
-    [TOK_GREATER]     = {NULL,     NULL,   PREC_NONE  },
-    [TOK_GREATER_EQ]  = {NULL,     NULL,   PREC_NONE  },
-    [TOK_LESS]        = {NULL,     NULL,   PREC_NONE  },
-    [TOK_LESS_EQ]     = {NULL,     NULL,   PREC_NONE  },
-    [TOK_IDENTIFIER]  = {NULL,     NULL,   PREC_NONE  },
-    [TOK_STRING]      = {NULL,     NULL,   PREC_NONE  },
-    [TOK_NUMBER]      = {number,   NULL,   PREC_NONE  },
-    [TOK_AND]         = {NULL,     NULL,   PREC_NONE  },
-    [TOK_CLASS]       = {NULL,     NULL,   PREC_NONE  },
-    [TOK_ELSE]        = {NULL,     NULL,   PREC_NONE  },
-    [TOK_FALSE]       = {NULL,     NULL,   PREC_NONE  },
-    [TOK_FOR]         = {NULL,     NULL,   PREC_NONE  },
-    [TOK_FUN]         = {NULL,     NULL,   PREC_NONE  },
-    [TOK_IF]          = {NULL,     NULL,   PREC_NONE  },
-    [TOK_NIL]         = {NULL,     NULL,   PREC_NONE  },
-    [TOK_OR]          = {NULL,     NULL,   PREC_NONE  },
-    [TOK_PRINT]       = {NULL,     NULL,   PREC_NONE  },
-    [TOK_RETURN]      = {NULL,     NULL,   PREC_NONE  },
-    [TOK_SUPER]       = {NULL,     NULL,   PREC_NONE  },
-    [TOK_THIS]        = {NULL,     NULL,   PREC_NONE  },
-    [TOK_TRUE]        = {NULL,     NULL,   PREC_NONE  },
-    [TOK_VAR]         = {NULL,     NULL,   PREC_NONE  },
-    [TOK_WHILE]       = {NULL,     NULL,   PREC_NONE  },
-    [TOK_ERR]         = {NULL,     NULL,   PREC_NONE  },
-    [TOK_EOF]         = {NULL,     NULL,   PREC_NONE  },
+    [TOK_LEFT_PAREN]  = {grouping, NULL,   PREC_NONE      },
+    [TOK_RIGHT_PAREN] = {NULL,     NULL,   PREC_NONE      },
+    [TOK_LEFT_BRACE]  = {NULL,     NULL,   PREC_NONE      },
+    [TOK_RIGHT_BRACE] = {NULL,     NULL,   PREC_NONE      },
+    [TOK_COMMA]       = {NULL,     NULL,   PREC_NONE      },
+    [TOK_DOT]         = {NULL,     NULL,   PREC_NONE      },
+    [TOK_MINUS]       = {unary,    binary, PREC_TERM      },
+    [TOK_PLUS]        = {NULL,     binary, PREC_TERM      },
+    [TOK_SEMICOLON]   = {NULL,     NULL,   PREC_NONE      },
+    [TOK_SLASH]       = {NULL,     binary, PREC_FACTOR    },
+    [TOK_STAR]        = {NULL,     binary, PREC_FACTOR    },
+    [TOK_BANG]        = {unary,    NULL,   PREC_UNARY     },
+    [TOK_BANG_EQ]     = {NULL,     binary, PREC_COMPARISON},
+    [TOK_EQ]          = {NULL,     NULL,   PREC_NONE      },
+    [TOK_EQ_EQ]       = {NULL,     binary, PREC_COMPARISON},
+    [TOK_GREATER]     = {NULL,     binary, PREC_COMPARISON},
+    [TOK_GREATER_EQ]  = {NULL,     binary, PREC_COMPARISON},
+    [TOK_LESS]        = {NULL,     binary, PREC_COMPARISON},
+    [TOK_LESS_EQ]     = {NULL,     binary, PREC_COMPARISON},
+    [TOK_IDENTIFIER]  = {NULL,     NULL,   PREC_NONE      },
+    [TOK_STRING]      = {NULL,     NULL,   PREC_NONE      },
+    [TOK_NUMBER]      = {number,   NULL,   PREC_NONE      },
+    [TOK_AND]         = {NULL,     NULL,   PREC_NONE      },
+    [TOK_CLASS]       = {NULL,     NULL,   PREC_NONE      },
+    [TOK_ELSE]        = {NULL,     NULL,   PREC_NONE      },
+    [TOK_FALSE]       = {literal,  NULL,   PREC_NONE      },
+    [TOK_FOR]         = {NULL,     NULL,   PREC_NONE      },
+    [TOK_FUN]         = {NULL,     NULL,   PREC_NONE      },
+    [TOK_IF]          = {NULL,     NULL,   PREC_NONE      },
+    [TOK_NIL]         = {literal,  NULL,   PREC_NONE      },
+    [TOK_OR]          = {NULL,     NULL,   PREC_NONE      },
+    [TOK_PRINT]       = {NULL,     NULL,   PREC_NONE      },
+    [TOK_RETURN]      = {NULL,     NULL,   PREC_NONE      },
+    [TOK_SUPER]       = {NULL,     NULL,   PREC_NONE      },
+    [TOK_THIS]        = {NULL,     NULL,   PREC_NONE      },
+    [TOK_TRUE]        = {literal,  NULL,   PREC_NONE      },
+    [TOK_VAR]         = {NULL,     NULL,   PREC_NONE      },
+    [TOK_WHILE]       = {NULL,     NULL,   PREC_NONE      },
+    [TOK_ERR]         = {NULL,     NULL,   PREC_NONE      },
+    [TOK_EOF]         = {NULL,     NULL,   PREC_NONE      },
 };
 
 static ParseRule *getRule(TokenType type) { return &rules[type]; }
@@ -243,7 +261,7 @@ static void parsePrecedence(Parser *parser, Precedence precedence) {
 
   ParseFn prefixRule = getRule(parser->previous.type)->prefix;
   if (prefixRule == NULL) {
-    errorAtPrevious(parser, "Expect expression.");
+    errorAtPrevious(parser, "expect expression.");
     return;
   }
 

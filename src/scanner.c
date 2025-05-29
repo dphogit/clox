@@ -5,9 +5,9 @@
 #include <string.h>
 
 void initScanner(Scanner *scanner, const char *source) {
-  scanner->start = source;
+  scanner->start   = source;
   scanner->current = source;
-  scanner->line = 1;
+  scanner->line    = 1;
 }
 
 static bool isAtEnd(Scanner *scanner) { return *scanner->current == '\0'; }
@@ -60,19 +60,19 @@ static void skipWhitespace(Scanner *scanner) {
 
 static Token newToken(Scanner *scanner, TokenType type) {
   Token token;
-  token.type = type;
-  token.start = scanner->start;
+  token.type   = type;
+  token.start  = scanner->start;
   token.length = scanner->current - scanner->start;
-  token.line = scanner->line;
+  token.line   = scanner->line;
   return token;
 }
 
 static Token errorToken(Scanner *scanner, const char *message) {
   Token token;
-  token.type = TOK_ERR;
-  token.start = message;
+  token.type   = TOK_ERR;
+  token.start  = message;
   token.length = strlen(message);
-  token.line = scanner->line;
+  token.line   = scanner->line;
   return token;
 }
 
@@ -114,7 +114,7 @@ static Token number(Scanner *scanner) {
 
 static TokenType checkKeyword(Scanner *scanner, int start, int len,
                               const char *rest, TokenType type) {
-  bool sameLength = scanner->current - scanner->start == start + len;
+  bool sameLength   = scanner->current - scanner->start == start + len;
   bool sameContents = strncmp(scanner->start + start, rest, len) == 0;
 
   return sameLength && sameContents ? type : TOK_IDENTIFIER;
@@ -195,10 +195,10 @@ Token scanToken(Scanner *scanner) {
     case '=':
       return newToken(scanner, match(scanner, '=') ? TOK_EQ_EQ : TOK_EQ);
     case '<':
-      return newToken(scanner, match(scanner, '=') ? TOK_LESS : TOK_LESS_EQ);
+      return newToken(scanner, match(scanner, '=') ? TOK_LESS_EQ : TOK_LESS);
     case '>':
       return newToken(scanner,
-                      match(scanner, '=') ? TOK_GREATER : TOK_GREATER_EQ);
+                      match(scanner, '=') ? TOK_GREATER_EQ : TOK_GREATER);
   }
 
   return errorToken(scanner, "Unexpected character.");
