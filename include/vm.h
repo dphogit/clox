@@ -11,6 +11,7 @@ typedef struct vm {
   uint8_t *ip;
   Value stack[STACK_MAX];
   Value *stackTop;
+  Obj *objects;
 } VM;
 
 typedef enum interpret_result {

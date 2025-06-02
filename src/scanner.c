@@ -90,6 +90,7 @@ static Token string(Scanner *scanner) {
     return errorToken(scanner, "Unterminated string.");
   }
 
+  advance(scanner);
   return newToken(scanner, TOK_STRING);
 }
 

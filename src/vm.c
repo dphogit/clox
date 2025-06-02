@@ -2,11 +2,14 @@
 #include "chunk.h"
 #include "compiler.h"
 #include "debug.h"
+#include "memory.h"
+#include "object.h"
 #include "value.h"
 
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 static void resetStack(VM *vm) { vm->stackTop = vm->stack; }
 
@@ -27,7 +30,7 @@ static void runtimeError(VM *vm, const char *format, ...) {
 
 void initVM(VM *vm) { resetStack(vm); }
 
-void freeVM(VM *vm) {}
+void freeVM(VM *vm) { freeObjects(vm); }
 
 void pushStack(VM *vm, Value value) {
   *vm->stackTop = value;
@@ -43,6 +46,19 @@ Value peekStack(VM *vm, int dist) { return vm->stackTop[-(dist + 1)]; }
 
 static bool isFalsy(Value value) {
   return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
+}
+
+static void concatenate(VM *vm) {
+  ObjString *b = AS_STRING(popStack(vm)), *a = AS_STRING(popStack(vm));
+
+  int n        = a->length + b->length;
+  char *buffer = ALLOCATE(char, n + 1);
+  memcpy(buffer, a->chars, a->length);
+  memcpy(buffer + a->length, b->chars, b->length);
+  buffer[n] = '\0';
+
+  ObjString *res = takeString(vm, buffer, n);
+  pushStack(vm, OBJ_VAL(res));
 }
 
 static InterpretResult run(VM *vm) {
@@ -103,10 +119,23 @@ static InterpretResult run(VM *vm) {
       case OP_GREATER_EQ: BINARY_OP(BOOL_VAL, >=); break;
       case OP_LESS:       BINARY_OP(BOOL_VAL, <); break;
       case OP_LESS_EQ:    BINARY_OP(BOOL_VAL, <=); break;
-      case OP_ADD:        BINARY_OP(NUM_VAL, +); break;
-      case OP_SUBTRACT:   BINARY_OP(NUM_VAL, -); break;
-      case OP_MULTIPLY:   BINARY_OP(NUM_VAL, *); break;
-      case OP_DIVIDE:     BINARY_OP(NUM_VAL, /); break;
+      case OP_ADD:        {
+        Value p0 = peekStack(vm, 0), p1 = peekStack(vm, 1);
+        if (IS_STRING(p0) && IS_STRING(p1)) {
+          concatenate(vm);
+        } else if (IS_NUM(p0) && IS_NUM(p1)) {
+          double b = AS_NUM(popStack(vm)), a = AS_NUM(popStack(vm));
+          pushStack(vm, NUM_VAL(a + b));
+        } else {
+          runtimeError(vm, "operands must both be numbers or both be strings");
+          return INTERPRET_RUNTIME_ERR;
+        }
+
+        break;
+      }
+      case OP_SUBTRACT: BINARY_OP(NUM_VAL, -); break;
+      case OP_MULTIPLY: BINARY_OP(NUM_VAL, *); break;
+      case OP_DIVIDE:   BINARY_OP(NUM_VAL, /); break;
       case OP_NOT:
         *(vm->stackTop - 1) = BOOL_VAL(isFalsy(peekStack(vm, 0)));
         break;
@@ -134,16 +163,16 @@ InterpretResult interpret(const char *source) {
   Chunk chunk;
   initChunk(&chunk);
 
-  if (!compile(source, &chunk)) {
+  VM vm;
+  initVM(&vm);
+  vm.chunk = &chunk;
+
+  if (!compile(&vm, source)) {
     freeChunk(&chunk);
     return INTERPRET_COMPILE_ERR;
   }
 
-  VM vm;
-  initVM(&vm);
-  vm.chunk = &chunk;
-  vm.ip    = chunk.code;
-
+  vm.ip                  = chunk.code;
   InterpretResult result = run(&vm);
 
   freeChunk(&chunk);

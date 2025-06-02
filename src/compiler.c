@@ -1,7 +1,9 @@
 #include "compiler.h"
 #include "chunk.h"
 #include "debug.h"
+#include "object.h"
 #include "scanner.h"
+#include "value.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -14,7 +16,7 @@ typedef struct parser {
   bool hadError;
   bool panicMode;
   Scanner *scanner;
-  Chunk *chunk; // The chunk that the bytecode will be written to.
+  VM *vm;
 } Parser;
 
 // The language's precdence levels from lowest to highest
@@ -101,12 +103,12 @@ static void consume(Parser *parser, TokenType type, const char *message) {
 }
 
 static void emitByte(Parser *parser, uint8_t byte) {
-  writeChunk(parser->chunk, byte, parser->previous.line);
+  writeChunk(parser->vm->chunk, byte, parser->previous.line);
 }
 
 static void emitBytes(Parser *parser, uint8_t byte1, uint8_t byte2) {
-  writeChunk(parser->chunk, byte1, parser->previous.line);
-  writeChunk(parser->chunk, byte2, parser->previous.line);
+  writeChunk(parser->vm->chunk, byte1, parser->previous.line);
+  writeChunk(parser->vm->chunk, byte2, parser->previous.line);
 }
 
 static void emitReturn(Parser *parser) { emitByte(parser, OP_RETURN); }
@@ -115,18 +117,18 @@ static void endCompiler(Parser *parser) {
   emitReturn(parser);
 
 #ifdef DEBUG_PRINT_CODE
-  disassembleChunk(parser->chunk, "code");
+  disassembleChunk(parser->vm->chunk, "code");
 #endif
 }
 
 static int makeConstant(Parser *parser, Value value) {
-  if (parser->chunk->constants.count >= UINT8_MAX) {
+  if (parser->vm->chunk->constants.count >= UINT8_MAX) {
     // A byte for the index means we can only store 256 constants in a chunk.
     errorAtPrevious(parser, "Too many constants in one chunk.");
     return -1;
   }
 
-  int constantIndex = addConstant(parser->chunk, value);
+  int constantIndex = addConstant(parser->vm->chunk, value);
   return constantIndex;
 }
 
@@ -199,6 +201,14 @@ static void literal(Parser *parser) {
   }
 }
 
+static void string(Parser *parser) {
+  // +1 and -2 trims leading/trailing quotation marks. Copying literal only.
+  ObjString *s = copyString(parser->vm, parser->previous.start + 1,
+                            parser->previous.length - 2);
+
+  emitConstant(parser, OBJ_VAL(s));
+}
+
 // The table of parse rules that drives the parser.
 ParseRule rules[] = {
     [TOK_LEFT_PAREN]  = {grouping, NULL,   PREC_NONE      },
@@ -221,7 +231,7 @@ ParseRule rules[] = {
     [TOK_LESS]        = {NULL,     binary, PREC_COMPARISON},
     [TOK_LESS_EQ]     = {NULL,     binary, PREC_COMPARISON},
     [TOK_IDENTIFIER]  = {NULL,     NULL,   PREC_NONE      },
-    [TOK_STRING]      = {NULL,     NULL,   PREC_NONE      },
+    [TOK_STRING]      = {string,   NULL,   PREC_NONE      },
     [TOK_NUMBER]      = {number,   NULL,   PREC_NONE      },
     [TOK_AND]         = {NULL,     NULL,   PREC_NONE      },
     [TOK_CLASS]       = {NULL,     NULL,   PREC_NONE      },
@@ -279,7 +289,7 @@ static void expression(Parser *parser) {
   parsePrecedence(parser, PREC_ASSIGNMENT);
 }
 
-bool compile(const char *source, Chunk *chunk) {
+bool compile(VM *vm, const char *source) {
   Scanner scanner;
   initScanner(&scanner, source);
 
@@ -287,7 +297,7 @@ bool compile(const char *source, Chunk *chunk) {
   parser.hadError  = false;
   parser.panicMode = false;
   parser.scanner   = &scanner;
-  parser.chunk     = chunk;
+  parser.vm        = vm;
 
   advance(&parser);
   expression(&parser);
