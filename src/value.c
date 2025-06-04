@@ -27,12 +27,6 @@ void freeValueArray(ValueArray *arr) {
   initValueArray(arr);
 }
 
-static bool objValsEqual(Value a, Value b) {
-  ObjString *aStr = AS_STRING(a), *bStr = AS_STRING(b);
-  return aStr->length == bStr->length &&
-         strncmp(aStr->chars, bStr->chars, aStr->length) == 0;
-}
-
 bool valuesEqual(Value a, Value b) {
   if (a.type != b.type)
     return false;
@@ -41,7 +35,7 @@ bool valuesEqual(Value a, Value b) {
     case VAL_BOOL: return AS_BOOL(a) == AS_BOOL(b);
     case VAL_NIL:  return true;
     case VAL_NUM:  return AS_NUM(a) == AS_NUM(b);
-    case VAL_OBJ:  return objValsEqual(a, b);
+    case VAL_OBJ:  return AS_OBJ(a) == AS_OBJ(b); // string interning
     default:       return false;
   }
 }
