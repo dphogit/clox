@@ -283,7 +283,7 @@ static void number(Parser *parser, bool __attribute__((unused)) canAssign) {
 
 static void grouping(Parser *parser, bool __attribute__((unused)) canAssign) {
   expression(parser);
-  consume(parser, TOK_RIGHT_PAREN, "Expect ')' after expression.");
+  consume(parser, TOK_RIGHT_PAREN, "expect ')' after expression.");
 }
 
 static void unary(Parser *parser, bool __attribute__((unused)) canAssign) {
@@ -394,48 +394,74 @@ static void declareVariable(Parser *parser) {
   addLocal(parser, name);
 }
 
+static void logicalAnd(Parser *parser, bool __attribute__((unused)) canAssign) {
+  // Jump to the compiled right operand if the left operand is false
+  int endJumpOffset = emitJump(parser, OP_JUMP_IF_FALSE);
+  emitByte(parser, OP_POP);
+
+  parsePrecedence(parser, PREC_AND);
+
+  patchJump(parser, endJumpOffset);
+}
+
+static void logicalOr(Parser *parser, bool __attribute__((unused)) canAssign) {
+  // In an 'or' expression, we skip the right operand if the left is truthy.
+  // So when the LHS is falsy, we skip over the immedieate OP_JUMP instructions
+  // which would jump to the RHS.
+  // TODO: This isn't the best way to do it, as there is more instructions
+  // to dispatch (more overhead) than logicalAnd - add a specialised opcode.
+  int elseJumpOffset = emitJump(parser, OP_JUMP_IF_FALSE);
+  int endJumpOffset  = emitJump(parser, OP_JUMP);
+
+  patchJump(parser, elseJumpOffset);
+  emitByte(parser, OP_POP);
+
+  parsePrecedence(parser, PREC_OR);
+  patchJump(parser, endJumpOffset);
+}
+
 // The table of parse rules that drives the parser.
 ParseRule rules[] = {
-    [TOK_LEFT_PAREN]  = {grouping, NULL,   PREC_NONE      },
-    [TOK_RIGHT_PAREN] = {NULL,     NULL,   PREC_NONE      },
-    [TOK_LEFT_BRACE]  = {NULL,     NULL,   PREC_NONE      },
-    [TOK_RIGHT_BRACE] = {NULL,     NULL,   PREC_NONE      },
-    [TOK_COMMA]       = {NULL,     NULL,   PREC_NONE      },
-    [TOK_DOT]         = {NULL,     NULL,   PREC_NONE      },
-    [TOK_MINUS]       = {unary,    binary, PREC_TERM      },
-    [TOK_PLUS]        = {NULL,     binary, PREC_TERM      },
-    [TOK_SEMICOLON]   = {NULL,     NULL,   PREC_NONE      },
-    [TOK_SLASH]       = {NULL,     binary, PREC_FACTOR    },
-    [TOK_STAR]        = {NULL,     binary, PREC_FACTOR    },
-    [TOK_BANG]        = {unary,    NULL,   PREC_UNARY     },
-    [TOK_BANG_EQ]     = {NULL,     binary, PREC_COMPARISON},
-    [TOK_EQ]          = {NULL,     NULL,   PREC_NONE      },
-    [TOK_EQ_EQ]       = {NULL,     binary, PREC_COMPARISON},
-    [TOK_GREATER]     = {NULL,     binary, PREC_COMPARISON},
-    [TOK_GREATER_EQ]  = {NULL,     binary, PREC_COMPARISON},
-    [TOK_LESS]        = {NULL,     binary, PREC_COMPARISON},
-    [TOK_LESS_EQ]     = {NULL,     binary, PREC_COMPARISON},
-    [TOK_IDENTIFIER]  = {variable, NULL,   PREC_NONE      },
-    [TOK_STRING]      = {string,   NULL,   PREC_NONE      },
-    [TOK_NUMBER]      = {number,   NULL,   PREC_NONE      },
-    [TOK_AND]         = {NULL,     NULL,   PREC_NONE      },
-    [TOK_CLASS]       = {NULL,     NULL,   PREC_NONE      },
-    [TOK_ELSE]        = {NULL,     NULL,   PREC_NONE      },
-    [TOK_FALSE]       = {literal,  NULL,   PREC_NONE      },
-    [TOK_FOR]         = {NULL,     NULL,   PREC_NONE      },
-    [TOK_FUN]         = {NULL,     NULL,   PREC_NONE      },
-    [TOK_IF]          = {NULL,     NULL,   PREC_NONE      },
-    [TOK_NIL]         = {literal,  NULL,   PREC_NONE      },
-    [TOK_OR]          = {NULL,     NULL,   PREC_NONE      },
-    [TOK_PRINT]       = {NULL,     NULL,   PREC_NONE      },
-    [TOK_RETURN]      = {NULL,     NULL,   PREC_NONE      },
-    [TOK_SUPER]       = {NULL,     NULL,   PREC_NONE      },
-    [TOK_THIS]        = {NULL,     NULL,   PREC_NONE      },
-    [TOK_TRUE]        = {literal,  NULL,   PREC_NONE      },
-    [TOK_VAR]         = {NULL,     NULL,   PREC_NONE      },
-    [TOK_WHILE]       = {NULL,     NULL,   PREC_NONE      },
-    [TOK_ERR]         = {NULL,     NULL,   PREC_NONE      },
-    [TOK_EOF]         = {NULL,     NULL,   PREC_NONE      },
+    [TOK_LEFT_PAREN]  = {grouping, NULL,       PREC_NONE      },
+    [TOK_RIGHT_PAREN] = {NULL,     NULL,       PREC_NONE      },
+    [TOK_LEFT_BRACE]  = {NULL,     NULL,       PREC_NONE      },
+    [TOK_RIGHT_BRACE] = {NULL,     NULL,       PREC_NONE      },
+    [TOK_COMMA]       = {NULL,     NULL,       PREC_NONE      },
+    [TOK_DOT]         = {NULL,     NULL,       PREC_NONE      },
+    [TOK_MINUS]       = {unary,    binary,     PREC_TERM      },
+    [TOK_PLUS]        = {NULL,     binary,     PREC_TERM      },
+    [TOK_SEMICOLON]   = {NULL,     NULL,       PREC_NONE      },
+    [TOK_SLASH]       = {NULL,     binary,     PREC_FACTOR    },
+    [TOK_STAR]        = {NULL,     binary,     PREC_FACTOR    },
+    [TOK_BANG]        = {unary,    NULL,       PREC_UNARY     },
+    [TOK_BANG_EQ]     = {NULL,     binary,     PREC_COMPARISON},
+    [TOK_EQ]          = {NULL,     NULL,       PREC_NONE      },
+    [TOK_EQ_EQ]       = {NULL,     binary,     PREC_COMPARISON},
+    [TOK_GREATER]     = {NULL,     binary,     PREC_COMPARISON},
+    [TOK_GREATER_EQ]  = {NULL,     binary,     PREC_COMPARISON},
+    [TOK_LESS]        = {NULL,     binary,     PREC_COMPARISON},
+    [TOK_LESS_EQ]     = {NULL,     binary,     PREC_COMPARISON},
+    [TOK_IDENTIFIER]  = {variable, NULL,       PREC_NONE      },
+    [TOK_STRING]      = {string,   NULL,       PREC_NONE      },
+    [TOK_NUMBER]      = {number,   NULL,       PREC_NONE      },
+    [TOK_AND]         = {NULL,     logicalAnd, PREC_AND       },
+    [TOK_CLASS]       = {NULL,     NULL,       PREC_NONE      },
+    [TOK_ELSE]        = {NULL,     NULL,       PREC_NONE      },
+    [TOK_FALSE]       = {literal,  NULL,       PREC_NONE      },
+    [TOK_FOR]         = {NULL,     NULL,       PREC_NONE      },
+    [TOK_FUN]         = {NULL,     NULL,       PREC_NONE      },
+    [TOK_IF]          = {NULL,     NULL,       PREC_NONE      },
+    [TOK_NIL]         = {literal,  NULL,       PREC_NONE      },
+    [TOK_OR]          = {NULL,     logicalOr,  PREC_OR        },
+    [TOK_PRINT]       = {NULL,     NULL,       PREC_NONE      },
+    [TOK_RETURN]      = {NULL,     NULL,       PREC_NONE      },
+    [TOK_SUPER]       = {NULL,     NULL,       PREC_NONE      },
+    [TOK_THIS]        = {NULL,     NULL,       PREC_NONE      },
+    [TOK_TRUE]        = {literal,  NULL,       PREC_NONE      },
+    [TOK_VAR]         = {NULL,     NULL,       PREC_NONE      },
+    [TOK_WHILE]       = {NULL,     NULL,       PREC_NONE      },
+    [TOK_ERR]         = {NULL,     NULL,       PREC_NONE      },
+    [TOK_EOF]         = {NULL,     NULL,       PREC_NONE      },
 };
 
 static ParseRule *getRule(TokenType type) { return &rules[type]; }
