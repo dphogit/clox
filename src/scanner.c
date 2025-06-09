@@ -125,7 +125,7 @@ static TokenType identifierType(Scanner *scanner) {
   switch (scanner->start[0]) {
     case 'a': return checkKeyword(scanner, 1, 2, "nd", TOK_AND);
     case 'c': return checkKeyword(scanner, 1, 4, "lass", TOK_CLASS);
-    case 'e': return checkKeyword(scanner, 1, 3, "else", TOK_ELSE);
+    case 'e': return checkKeyword(scanner, 1, 3, "lse", TOK_ELSE);
     case 'f':
       if (scanner->current - scanner->start > 1) {
         switch (scanner->start[1]) {

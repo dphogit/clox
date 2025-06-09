@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define JMP_OPERAND_BYTES (2)
+
 typedef struct local {
   Token name;
   int depth;
@@ -68,6 +70,8 @@ static void initCompiler(Compiler *compiler) {
   compiler->localCount = 0;
   compiler->scopeDepth = 0;
 }
+
+static Chunk *currentChunk(Parser *parser) { return parser->vm->chunk; }
 
 static void errorAt(Parser *parser, Token *token, const char *message) {
   // Supress cascaded errors
@@ -135,12 +139,23 @@ static bool match(Parser *parser, TokenType type) {
 }
 
 static void emitByte(Parser *parser, uint8_t byte) {
-  writeChunk(parser->vm->chunk, byte, parser->previous.line);
+  writeChunk(currentChunk(parser), byte, parser->previous.line);
 }
 
 static void emitBytes(Parser *parser, uint8_t byte1, uint8_t byte2) {
-  writeChunk(parser->vm->chunk, byte1, parser->previous.line);
-  writeChunk(parser->vm->chunk, byte2, parser->previous.line);
+  writeChunk(currentChunk(parser), byte1, parser->previous.line);
+  writeChunk(currentChunk(parser), byte2, parser->previous.line);
+}
+
+static int emitJump(Parser *parser, uint8_t jumpInstruction) {
+  emitByte(parser, jumpInstruction);
+
+  // Write 2-byte placeholder operand for the given jump instruction
+  emitByte(parser, 0xff);
+  emitByte(parser, 0xff);
+
+  // Return the offset of the jump instruction in the written chunk
+  return currentChunk(parser)->count - JMP_OPERAND_BYTES;
 }
 
 static void emitReturn(Parser *parser) { emitByte(parser, OP_RETURN); }
@@ -149,7 +164,7 @@ static void endCompiler(Parser *parser) {
   emitReturn(parser);
 
 #ifdef DEBUG_PRINT_CODE
-  disassembleChunk(parser->vm->chunk, "code");
+  disassembleChunk(currentChunk(parser), "code");
 #endif
 }
 
@@ -180,13 +195,13 @@ static bool inGlobalScope(Parser *parser) {
 }
 
 static int makeConstant(Parser *parser, Value value) {
-  if (parser->vm->chunk->constants.count >= UINT8_MAX) {
+  if (currentChunk(parser)->constants.count >= UINT8_MAX) {
     // A byte for the index means we can only store 256 constants in a chunk.
     errorAtPrevious(parser, "Too many constants in one chunk.");
     return -1;
   }
 
-  int constantIndex = addConstant(parser->vm->chunk, value);
+  int constantIndex = addConstant(currentChunk(parser), value);
   return constantIndex;
 }
 
@@ -204,6 +219,21 @@ static void emitConstant(Parser *parser, Value value) {
   if (constantIndex != -1) {
     emitBytes(parser, OP_CONSTANT, constantIndex);
   }
+}
+
+static void patchJump(Parser *parser, int offset) {
+  Chunk *chunk = currentChunk(parser);
+
+  // Adjust for the bytecode for the jump offset itself
+  int bytesToJump = chunk->count - offset - JMP_OPERAND_BYTES;
+
+  if (bytesToJump > UINT16_MAX) {
+    errorAtPrevious(parser, "too much code to jump over");
+  }
+
+  // Replace the operand of the jump instruction (high byte, then low byte)
+  chunk->code[offset]     = (bytesToJump >> 8) & 0xff;
+  chunk->code[offset + 1] = bytesToJump & 0xff;
 }
 
 static void addLocal(Parser *parser, Token name) {
@@ -426,7 +456,7 @@ static void parsePrecedence(Parser *parser, Precedence precedence) {
 
   ParseFn prefixRule = getRule(parser->previous.type)->prefix;
   if (prefixRule == NULL) {
-    errorAtPrevious(parser, "expect expression.");
+    errorAtPrevious(parser, "expect expression");
     return;
   }
 
@@ -521,13 +551,38 @@ static void varDeclaration(Parser *parser) {
 
 static void expressionStatement(Parser *parser) {
   expression(parser);
-  consume(parser, TOK_SEMICOLON, "Expect ';' after expresssion.");
+  consume(parser, TOK_SEMICOLON, "expect ';' after expresssion");
   emitByte(parser, OP_POP);
+}
+
+static void ifStatement(Parser *parser) {
+  consume(parser, TOK_LEFT_PAREN, "expect '(' after 'if'");
+  expression(parser);
+  consume(parser, TOK_RIGHT_PAREN, "expect ')' after condition");
+
+  // Emit the jump instruction with a placeholder, patched after statement.
+  // Add OP_POP instruction to pop condition if we enter the 'then' statement.
+  int thenJumpOffset = emitJump(parser, OP_JUMP_IF_FALSE);
+  emitByte(parser, OP_POP);
+  statement(parser);
+
+  // Need to jump else branch statement to not fall through if cond truthy.
+  // Add OP_POP instruction to pop condition if we enter the 'else' statement.
+  int elseJumpOffset = emitJump(parser, OP_JUMP);
+  emitByte(parser, OP_POP);
+
+  patchJump(parser, thenJumpOffset);
+
+  if (match(parser, TOK_ELSE)) {
+    statement(parser);
+  }
+
+  patchJump(parser, elseJumpOffset);
 }
 
 static void printStatement(Parser *parser) {
   expression(parser);
-  consume(parser, TOK_SEMICOLON, "Expect ';' after value.");
+  consume(parser, TOK_SEMICOLON, "expect ';' after value");
   emitByte(parser, OP_PRINT);
 }
 
@@ -546,6 +601,8 @@ static void declarationStatement(Parser *parser) {
 static void statement(Parser *parser) {
   if (match(parser, TOK_PRINT)) {
     printStatement(parser);
+  } else if (match(parser, TOK_IF)) {
+    ifStatement(parser);
   } else if (match(parser, TOK_LEFT_BRACE)) {
     beginScope(parser);
     blockStatement(parser);
