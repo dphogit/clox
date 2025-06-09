@@ -30,11 +30,15 @@ static void runtimeError(VM *vm, const char *format, ...) {
 
 void initVM(VM *vm) {
   resetStack(vm);
+
+  vm->objects = NULL;
+  initTable(&vm->globals);
   initTable(&vm->strings);
 }
 
 void freeVM(VM *vm) {
   freeTable(&vm->strings);
+  freeTable(&vm->globals);
   freeObjects(vm);
 }
 
@@ -70,6 +74,7 @@ static void concatenate(VM *vm) {
 static InterpretResult run(VM *vm) {
 #define READ_BYTE()     (*vm->ip++)
 #define READ_CONSTANT() (vm->chunk->constants.values[READ_BYTE()])
+#define READ_STRING()   AS_STRING(READ_CONSTANT())
 
 #define BINARY_OP(valueType, op)                                  \
   do {                                                            \
@@ -106,12 +111,53 @@ static InterpretResult run(VM *vm) {
 
     uint8_t instruction = READ_BYTE();
 
+    // TODO: Assign global variables (OP_SET_GLOBAL)
     switch (instruction) {
-      case OP_CONSTANT: pushStack(vm, READ_CONSTANT()); break;
-      case OP_NIL:      pushStack(vm, NIL_VAL); break;
-      case OP_TRUE:     pushStack(vm, BOOL_VAL(true)); break;
-      case OP_FALSE:    pushStack(vm, BOOL_VAL(false)); break;
-      case OP_EQ:       {
+      case OP_CONSTANT:  pushStack(vm, READ_CONSTANT()); break;
+      case OP_NIL:       pushStack(vm, NIL_VAL); break;
+      case OP_TRUE:      pushStack(vm, BOOL_VAL(true)); break;
+      case OP_FALSE:     pushStack(vm, BOOL_VAL(false)); break;
+      case OP_POP:       popStack(vm); break;
+      case OP_GET_LOCAL: {
+        uint8_t stackIndex = READ_BYTE();
+        pushStack(vm, vm->stack[stackIndex]);
+        break;
+      }
+      case OP_SET_LOCAL: {
+        uint8_t stackIndex    = READ_BYTE();
+        vm->stack[stackIndex] = peekStack(vm, 0);
+        break;
+      }
+      case OP_GET_GLOBAL: {
+        ObjString *name = READ_STRING();
+        Value value;
+
+        if (!tableGet(&vm->globals, name, &value)) {
+          runtimeError(vm, "undefined variable '%s'", name->chars);
+          return INTERPRET_RUNTIME_ERR;
+        }
+
+        pushStack(vm, value);
+        break;
+      }
+      case OP_DEFINE_GLOBAL: {
+        ObjString *name = READ_STRING();
+        tableSet(&vm->globals, name, peekStack(vm, 0));
+        popStack(vm);
+        break;
+      }
+      case OP_SET_GLOBAL: {
+        ObjString *name = READ_STRING();
+        if (tableSet(&vm->globals, name, peekStack(vm, 0))) {
+          // tableSet returning true means a new entry into the table, so
+          // the variable assigning to has not be defined which is a error
+          tableDelete(&vm->globals, name);
+          runtimeError(vm, "undefined variable '%s'", name->chars);
+          return INTERPRET_RUNTIME_ERR;
+        }
+        break;
+      }
+      case OP_EQ: {
         Value b = popStack(vm), a = popStack(vm);
         pushStack(vm, BOOL_VAL(valuesEqual(a, b)));
         break;
@@ -153,10 +199,12 @@ static InterpretResult run(VM *vm) {
 
         *(vm->stackTop - 1) = NUM_VAL(-AS_NUM(peekStack(vm, 0)));
         break;
-      case OP_RETURN:
+      case OP_PRINT: {
         printValue(popStack(vm));
         printf("\n");
-        return INTERPRET_OK;
+        break;
+      }
+      case OP_RETURN: return INTERPRET_OK;
     }
   }
 
@@ -165,22 +213,13 @@ static InterpretResult run(VM *vm) {
 #undef BINARY_OP
 }
 
-InterpretResult interpret(const char *source) {
-  Chunk chunk;
-  initChunk(&chunk);
-
-  VM vm;
-  initVM(&vm);
-  vm.chunk = &chunk;
-
-  if (!compile(&vm, source)) {
-    freeChunk(&chunk);
+InterpretResult interpret(VM *vm, const char *source) {
+  if (!compile(vm, source)) {
     return INTERPRET_COMPILE_ERR;
   }
 
-  vm.ip                  = chunk.code;
-  InterpretResult result = run(&vm);
+  vm->ip                 = vm->chunk->code;
+  InterpretResult result = run(vm);
 
-  freeChunk(&chunk);
   return result;
 }

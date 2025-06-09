@@ -29,7 +29,7 @@ void freeObject(Obj *obj) {
   }
 }
 
-void freeVM(VM *vm) {
+void freeObjects(VM *vm) {
   Obj *obj = vm->objects;
 
   while (obj != NULL) {

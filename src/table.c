@@ -113,7 +113,7 @@ bool tableSet(Table *table, ObjString *key, Value value) {
   }
 
   Entry *entry = findEntry(table->entries, table->capacity, key);
-  bool isNew = entry->key = NULL;
+  bool isNew   = entry->key == NULL;
 
   // Increment the count only for empty buckets. Reusing tombstones do not
   // change count as they are considered full buckets and already accounted for.

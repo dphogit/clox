@@ -13,6 +13,7 @@ typedef struct vm {
   Value stack[STACK_MAX];
   Value *stackTop;
   Table strings; // String interning table (hashset)
+  Table globals; // Global variables
   Obj *objects;
 } VM;
 
@@ -28,6 +29,6 @@ void freeVM(VM *vm);
 void pushStack(VM *vm, Value value);
 Value popStack(VM *vm);
 
-InterpretResult interpret(const char *source);
+InterpretResult interpret(VM *vm, const char *source);
 
 #endif

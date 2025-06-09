@@ -44,9 +44,17 @@ static uint32_t hashString(const char *key, int length) {
   return hash;
 }
 
-// Takes ownership of an existing dynamically allocated string
+// Takes ownership of an existing dynamically allocated string.
+// If interned, we free the passed one and return the existing reference.
 ObjString *takeString(VM *vm, char *chars, int length) {
   uint32_t hash = hashString(chars, length);
+
+  ObjString *interned = tableFindString(&vm->strings, chars, length, hash);
+  if (interned != NULL) {
+    FREE_ARRAY(char, (void *)chars, length + 1);
+    return interned;
+  }
+
   return allocateString(vm, chars, length, hash);
 }
 
@@ -56,10 +64,8 @@ ObjString *copyString(VM *vm, const char *chars, int length) {
   uint32_t hash = hashString(chars, length);
 
   ObjString *interned = tableFindString(&vm->strings, chars, length, hash);
-  if (interned != NULL) {
-    FREE_ARRAY(char, (void *)chars, length + 1);
+  if (interned != NULL)
     return interned;
-  }
 
   char *buffer = ALLOCATE(char, length + 1);
   strncpy(buffer, chars, length);
