@@ -158,6 +158,18 @@ static int emitJump(Parser *parser, uint8_t jumpInstruction) {
   return currentChunk(parser)->count - JMP_OPERAND_BYTES;
 }
 
+static void emitLoop(Parser *parser, int loopStart) {
+  emitByte(parser, OP_LOOP);
+
+  int offset = currentChunk(parser)->count - loopStart + JMP_OPERAND_BYTES;
+  if (offset > UINT16_MAX) {
+    errorAtPrevious(parser, "Loop body too large.");
+  }
+
+  emitByte(parser, (offset >> 8) & 0xff);
+  emitByte(parser, offset & 0xff);
+}
+
 static void emitReturn(Parser *parser) { emitByte(parser, OP_RETURN); }
 
 static void endCompiler(Parser *parser) {
@@ -606,6 +618,76 @@ static void ifStatement(Parser *parser) {
   patchJump(parser, elseJumpOffset);
 }
 
+static void whileStatement(Parser *parser) {
+  int loopStart = currentChunk(parser)->count;
+
+  consume(parser, TOK_LEFT_PAREN, "expect '(' after while");
+  expression(parser);
+  consume(parser, TOK_RIGHT_PAREN, "expect ')' after while");
+
+  // We jump out of the loop when its condition is false, otherwise each
+  // iteration should jump back to the loop start.
+  int exitJump = emitJump(parser, OP_JUMP_IF_FALSE);
+  emitByte(parser, OP_POP);
+  statement(parser);
+  emitLoop(parser, loopStart);
+
+  // Patch the jump instruction operand, and pop the condition.
+  patchJump(parser, exitJump);
+  emitByte(parser, OP_POP);
+}
+
+static void forStatement(Parser *parser) {
+  beginScope(parser);
+
+  // Initializer
+  consume(parser, TOK_LEFT_PAREN, "expect '(' after 'for'");
+  if (match(parser, TOK_SEMICOLON)) {
+    // No initializer
+  } else if (match(parser, TOK_VAR)) {
+    varDeclaration(parser);
+  } else {
+    expressionStatement(parser);
+  }
+
+  int loopStart = currentChunk(parser)->count;
+  int exitJump  = -1;
+  if (!match(parser, TOK_SEMICOLON)) {
+    expression(parser);
+    consume(parser, TOK_SEMICOLON, "expect ';'");
+
+    // Jump out of the loop if the condition is false.
+    exitJump = emitJump(parser, OP_JUMP_IF_FALSE);
+    emitByte(parser, OP_POP); // condition
+  }
+
+  // Increment - appears before loop body in bytecode but executes after it.
+  // Will jump to the next iteration of the loop (condition evaluation).
+  if (!match(parser, TOK_RIGHT_PAREN)) {
+    int bodyJump       = emitJump(parser, OP_JUMP);
+    int incrementStart = currentChunk(parser)->count;
+    expression(parser);
+    emitByte(parser, OP_POP);
+    consume(parser, TOK_RIGHT_PAREN, "expect ')' after for clauses.");
+
+    emitLoop(parser, loopStart);
+    loopStart = incrementStart;
+    patchJump(parser, bodyJump);
+  }
+
+  // Loop body, will jump to the increment.
+  statement(parser);
+  emitLoop(parser, loopStart);
+
+  if (exitJump != -1) {
+    // Patch the jump to the top of the loop i.e. before condition evaluation
+    patchJump(parser, exitJump);
+    emitByte(parser, OP_POP); // condition
+  }
+
+  endScope(parser);
+}
+
 static void printStatement(Parser *parser) {
   expression(parser);
   consume(parser, TOK_SEMICOLON, "expect ';' after value");
@@ -629,6 +711,10 @@ static void statement(Parser *parser) {
     printStatement(parser);
   } else if (match(parser, TOK_IF)) {
     ifStatement(parser);
+  } else if (match(parser, TOK_WHILE)) {
+    whileStatement(parser);
+  } else if (match(parser, TOK_FOR)) {
+    forStatement(parser);
   } else if (match(parser, TOK_LEFT_BRACE)) {
     beginScope(parser);
     blockStatement(parser);
