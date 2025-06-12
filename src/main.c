@@ -12,10 +12,6 @@ void repl() {
   VM vm;
   initVM(&vm);
 
-  Chunk chunk;
-  initChunk(&chunk);
-  vm.chunk = &chunk;
-
   while (true) {
     printf("clox> ");
     if ((nread = getline(&line, &len, stdin)) == -1) {
@@ -27,8 +23,6 @@ void repl() {
     }
 
     interpret(&vm, line);
-
-    freeChunk(vm.chunk); // Reset the chunk (clears code data) each execution.
   }
 
   freeVM(&vm);
@@ -83,15 +77,10 @@ void runFile(const char *path) {
   VM vm;
   initVM(&vm);
 
-  Chunk chunk;
-  initChunk(&chunk);
-  vm.chunk = &chunk;
-
   char *source = readFile(path);
 
   InterpretResult result = interpret(&vm, source);
 
-  freeChunk(vm.chunk);
   freeVM(&vm);
   free(source);
 

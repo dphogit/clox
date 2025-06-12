@@ -1,12 +1,14 @@
 #ifndef CLOX_VALUE_H
 #define CLOX_VALUE_H
 
-#include "stdbool.h"
+#include <stdbool.h>
 
 typedef enum value_type { VAL_BOOL, VAL_NIL, VAL_NUM, VAL_OBJ } ValueType;
 
 typedef struct obj Obj;
 typedef struct obj_string ObjString;
+typedef struct obj_function ObjFunction;
+typedef struct obj_native ObjNative;
 
 typedef struct value {
   ValueType type;

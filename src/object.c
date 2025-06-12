@@ -44,6 +44,20 @@ static uint32_t hashString(const char *key, int length) {
   return hash;
 }
 
+ObjFunction *newFunction(VM *vm) {
+  ObjFunction *func = ALLOCATE_OBJ(vm, ObjFunction, OBJ_FUNCTION);
+  func->arity       = 0;
+  func->name        = NULL;
+  initChunk(&func->chunk);
+  return func;
+}
+
+ObjNative *newNative(VM *vm, NativeFn function) {
+  ObjNative *native = ALLOCATE_OBJ(vm, ObjNative, OBJ_NATIVE);
+  native->function  = function;
+  return native;
+}
+
 // Takes ownership of an existing dynamically allocated string.
 // If interned, we free the passed one and return the existing reference.
 ObjString *takeString(VM *vm, char *chars, int length) {
@@ -74,8 +88,19 @@ ObjString *copyString(VM *vm, const char *chars, int length) {
   return allocateString(vm, buffer, length, hash);
 }
 
+static void printFunction(ObjFunction *func) {
+  if (func->name == NULL) {
+    printf("<script>");
+    return;
+  }
+
+  printf("<fn %s>", func->name->chars);
+}
+
 void printObject(Value value) {
   switch (OBJ_TYPE(value)) {
-    case OBJ_STRING: printf("%s", AS_CSTRING(value)); break;
+    case OBJ_FUNCTION: printFunction(AS_FUNCTION(value)); break;
+    case OBJ_NATIVE:   printf("<native fn>"); break;
+    case OBJ_STRING:   printf("%s", AS_CSTRING(value)); break;
   }
 }

@@ -5,8 +5,6 @@
 
 #include <stdbool.h>
 
-/// Compilation converts the source into bytecode and writes it to the VM.
-/// Returns true if compiling succeeded, otherwise false.
-bool compile(VM *vm, const char *source);
+ObjFunction *compile(VM *vm, const char *source);
 
 #endif

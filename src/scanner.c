@@ -131,7 +131,7 @@ static TokenType identifierType(Scanner *scanner) {
         switch (scanner->start[1]) {
           case 'a': return checkKeyword(scanner, 2, 3, "lse", TOK_FALSE);
           case 'o': return checkKeyword(scanner, 2, 1, "r", TOK_FOR);
-          case 'u': return checkKeyword(scanner, 2, 3, "n", TOK_FUN);
+          case 'u': return checkKeyword(scanner, 2, 1, "n", TOK_FUN);
         }
       }
       break;
